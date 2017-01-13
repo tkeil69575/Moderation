@@ -172,7 +172,7 @@ modplot<-function(plotdata){
   par(op)
 }
 
-#rockchalk (no used)
+#rockchalk (not called, only for testing purposes)
 jnplot <- function() {
   library(rockchalk)
   op <- par(family="serif", pty="s", mar=c(2,4.2,0.1,0.1))
@@ -278,7 +278,7 @@ custom_jnplot <- function(jn_root1, jn_root2, jnvals) {
 }
 
 ################# test assumptions first ####################
-#get data from spss file
+#read data from csv file
 if (file.exists(in_file)) {
   if (use_covars > 0) {
     master <- read.csv(in_file, sep=",")[ ,c(iv_var, mod_var, dv_var, cov1, cov2, cov3)]
