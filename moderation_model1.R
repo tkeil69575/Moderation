@@ -1,4 +1,4 @@
-#set working directory (no trailing slash)
+#set working directory, e.g., where your data files are saved (no trailing slash)
 setwd("C:/path/to/working/directory")
 
 ############ settings - change with care ##############
@@ -13,6 +13,7 @@ img_alias <- "cairo" #create antialiased png with Cairo, or none
 img_dim <- 10 #height and width of png
 img_fontsize <- 24 #size of font for moderation plot (comes out much smaller)
 use_covars <- 1 #set to 0 to disable use of covariates in model
+plot_scatter <- 1 #set to 0 to disable inclusion of scatter dots in simple slopes plot
 
 #set to names of columns in your dataset
 iv_var <- "name_of_iv_column"   #x
@@ -38,7 +39,6 @@ cov2_desc <- "Description Covariate 2"
 cov3_desc <- "Description Covariate 3"
 
 ################### dont change below ###################
-
 #install missing libraries
 list.of.packages <- c("foreign", "stringr", "lmtest", "zoo", "sandwich", 
                       "Cairo", "devEMF", "psych", "rockchalk", "MASS")
@@ -99,7 +99,7 @@ img_save <- function(num, img_height) {
   }
 }
 
-#plots the moderation
+#function to create plot of simple slopes
 modplot<-function(plotdata){
   #set parameter for outer margins of plot
   #bottom,left,top,right
@@ -162,17 +162,19 @@ modplot<-function(plotdata){
   lines(hiline, lty="solid", lwd=2)
   
   #superimpose scatterplot points
-  if (iv_dicot < 1) {
-    op <- par(new=TRUE)
-    plot(noout$IV,noout$DV, 
-         xlim=c(min(numplot_data1),max(numplot_data1)),
-         #ylim=c(min(plotdata[,4])-0.1,max(plotdata[,4])+0.1),
-         xaxt="n", yaxt="n", ylab="", xlab="", col="#555555")
+  if (plot_scatter > 0){
+    if (iv_dicot < 1) {
+      op <- par(new=TRUE)
+      plot(noout$IV,noout$DV, 
+           xlim=c(min(numplot_data1),max(numplot_data1)),
+           #ylim=c(min(plotdata[,4])-0.1,max(plotdata[,4])+0.1),
+           xaxt="n", yaxt="n", ylab="", xlab="", col="#555555")
+    }
   }
   par(op)
 }
 
-#rockchalk (not called, only for testing purposes)
+#rockchalk (not used, for testing purposes)
 jnplot <- function() {
   library(rockchalk)
   op <- par(family="serif", pty="s", mar=c(2,4.2,0.1,0.1))
@@ -184,8 +186,17 @@ jnplot <- function() {
 
 #plots the jn regions of significance
 custom_jnplot <- function(jn_root1, jn_root2, jnvals) {
-  #bottom,left,top,right
-  op <- par(xpd=FALSE, mar=c(2.9,3.4,0.1,0.1), mgp=c(1.5,0.6,0), family="serif")
+  
+  y_label_len <- nchar(paste("Conditional effect of", tolower(iv_var_desc), "on", 
+                             tolower(dv_var_desc)))
+  
+  if (y_label_len < 66) {
+    #bottom,left,top,right
+    op <- par(mar=c(2.9,3.4,0.1,0.1))
+  } else {
+    op <- par(mar=c(2.9,4.8,0.1,0.1))
+  }
+  op <- par(xpd=FALSE, mgp=c(1.5,0.6,0), family="serif")
   fillcolour <- rgb(0, 0, 0, max=255, alpha=40)
   jn_roots <- cbind(jn_root1, jn_root2)
   
@@ -230,11 +241,20 @@ custom_jnplot <- function(jn_root1, jn_root2, jnvals) {
     lw7 <- loess(y ~ x, data=jn_ulci_sub_hi)
   }
   
-  jn_ylab_desc <- paste("Conditional effect of", iv_var_desc, "on", dv_var_desc, "\n")
+  if (y_label_len < 66) {
+    #single line (depends on lenght of description)
+    jn_ylab_desc <- paste("Conditional effect of", tolower(iv_var_desc), "on", 
+                          tolower(dv_var_desc), "\n")
+  } else {
+    #double line
+    jn_ylab_desc <- paste("Conditional effect of", tolower(iv_var_desc), "\non", 
+                          tolower(dv_var_desc), "\n")
+  }
+  
   #empty plot with axis set up properly
   plot(y ~ x, data=jn_llci_data, ylim=y_range, xlim=x_range, 
        xlab=paste(mod_var_desc,"(M)"), ylab=jn_ylab_desc, 
-       cex.axis=0.9, las=1, tck=-0.025, type="n")
+       cex.axis=0.9, cex.lab=1.1, las=1, tck=-0.025, type="n")
   
   #sort values to join dots
   j1 <- order(jn_llci_data$x)
@@ -267,7 +287,7 @@ custom_jnplot <- function(jn_root1, jn_root2, jnvals) {
   lines(jn_ulci_data$x[j2], lw2$fitted[j2], lty="dashed")
   lines(jn_meff_data$x[j3], lw3$fitted[j3], lty="solid", lwd=2)
   
-  abline(h =0, v=jn_roots, lty="dotted")
+  abline(h=0, v=jn_roots, lty="dotted")
   text(jn_roots, min(y_range), labels=round(jn_roots,2), adj=-0.4, cex=0.9)
   
   legend("topleft", legend=c("Point estimate", "95% Conf. intervals", "Region(s) of significance"),
@@ -278,7 +298,7 @@ custom_jnplot <- function(jn_root1, jn_root2, jnvals) {
 }
 
 ################# test assumptions first ####################
-#read data from csv file
+#get data from spss file
 if (file.exists(in_file)) {
   if (use_covars > 0) {
     master <- read.csv(in_file, sep=",")[ ,c(iv_var, mod_var, dv_var, cov1, cov2, cov3)]
@@ -890,10 +910,10 @@ if (file.exists(in_file)) {
       if (!is.na(jn_results[1,1])==TRUE) { #no NA
         img_save(2, img_dim)
         #jnplot()
-        if (!exists("roots[2,1]")) {
+        if (nrow(roots) == 1) {
           jn_root1 <- roots[1,1]
           jn_root2 <- NA
-        } else {
+        } else if (nrow(roots) == 2) {
           jn_root1 <- roots[1,1]
           jn_root2 <- roots[2,1]
         }
