@@ -2,10 +2,11 @@
 setwd("C:/path/to/working/directory")
 
 ############ settings - change with care ##############
-in_file <- "your_data.csv" #name of file to import
+in_file1 <- "your_data.csv" #name of file to import
+in_file2 <- "some_other_data.csv" #leave empty if not needed, otherwise datasets are appended
 
-meancent <- 1 #set to 0 to disable mean centering of predictors
-del_outs <- 1 #set to 0 to disable removal of outliers
+meancent <- 1 #set to 0 to disable mean centering of predictors (if IV binary, only MOD is mean centered)
+del_outs <- 1 #set to 0 to disable removal of outliers (only works if IV is continious)
 heteros <- 1  #set to 0 to disable heterscedasticity-consistent SEs
 jntech <- 1 #set to 0 to disable johnson-neyman table
 img_type <- "png" #type of moderation image to create (svg, emf or png)
@@ -31,6 +32,9 @@ cov3 <- "name_of_cov3_var"
 iv_var_desc <- "Description IV"
 mod_var_desc <- "Description Moderator"
 dv_var_desc <- "Descrition DV"
+
+#if IV is binary, change this to groups of IV instead of mod conditions
+#mod_line_desc <- c("Group A","Group B")
 mod_line_desc <- c("high MOD","mean","low MOD")
 
 #set to names of control variables
@@ -106,12 +110,17 @@ modplot<-function(plotdata){
   op <- par(mar=c(3,2.9,0,0), family="serif")
   
   #adjustments for legend outside of plot
-  plot.new() #must be called to draw empty test legend
-  l <- legend(0, 0, bty='n', mod_line_desc, plot=F, lwd=0, cex=0.9, 
-              title=paste(mod_var_desc,"(M)"))
+  plot.new() #must be called to draw empty test legend, so we can calculate its length
+  if (iv_dicot < 1) {
+    len_legend <- legend(0, 0, bty='n', mod_line_desc, plot=F, lwd=0, cex=0.9, 
+                         title=paste(mod_var_desc,"(M)"))
+  } else {
+    len_legend <- legend(0, 0, bty='n', mod_line_desc, plot=F, lwd=0, cex=0.9, 
+                         title=mod_var_desc)
+  }
   #l$rect, dimensions of rectange, w=width, h=height
   #calculate right margin width in ndc
-  w <- grconvertX(l$rect$w, to='ndc') - grconvertX(0, to='ndc')
+  w <- grconvertX(len_legend$rect$w, to='ndc') - grconvertX(0, to='ndc')
   w = w + 0.05
   #omd values 1 and 3 define in percentages of the device region
   #the starting points of the x and y axes, while values 
@@ -132,7 +141,6 @@ modplot<-function(plotdata){
     lowline <- c(plottest[1],plottest[3],plottest[5])
     hiline <- c(plottest[2],plottest[4],plottest[6])
     lty_legend <- c(1,2)
-    mod_line_desc <- mod_line_desc[-2] #remove mean
   }
   
   #plot an empty plot
@@ -143,17 +151,26 @@ modplot<-function(plotdata){
   op <- par(xpd=TRUE) #allows legend to be outside of plot
   legend(par('usr')[2], par('usr')[4], mod_line_desc, lty=lty_legend, lwd=2, cex=0.9,
          title="", inset=c(-0.3,0), bty='n', xpd=NA, seg.len=2.2)
-  #make only the legend title bold
-  #op <- par(font=2)
-  legend(par('usr')[2], par('usr')[4], "", lwd=0, cex=0.9, 
-         title=paste("  ",mod_var_desc,"(M)"), bty='n', xpd=NA)
+  #make only the legend title bold, account for binary IV and switch
+  if (iv_dicot < 1) {
+    legend(par('usr')[2], par('usr')[4], "", lwd=0, cex=0.9, 
+           title=paste("  ",mod_var_desc,"(M)"), bty='n', xpd=NA)
+  } else {
+    #iv is binary, so use IV as legend for lines
+    legend(par('usr')[2], par('usr')[4], "", lwd=0, cex=0.9, 
+           title=paste("  ",iv_var_desc), bty='n', xpd=NA)
+  }
   
   #draw horizontal grid lines, axis and moderation lines
   op <- par(xpd=FALSE, mgp=c(1,0.6,0))
   grid(NA, NULL, col = "#999999", lty = "dotted")
   axis(1, at=1:3, labels=c("-1 SD", "Mean", "+1 SD"), tck=-0.025, cex.axis=0.9)
   axis(2, cex.axis=0.9, las=1, tck=-0.025)
-  mtext(1, text=iv_var_desc, line=2, font=1)
+  if (iv_dicot < 1) {
+    mtext(1, text=iv_var_desc, line=2, font=1)
+  } else {
+    mtext(1, text=paste(mod_var_desc," (M)"), line=2, font=1)
+  }
   mtext(2, text=dv_var_desc, line=2, font=1)
   lines(lowline, lty="dotted", lwd=2)
   if (iv_dicot < 1) {
@@ -192,7 +209,7 @@ custom_jnplot <- function(jn_root1, jn_root2, jnvals) {
   
   if (y_label_len < 66) {
     #bottom,left,top,right
-    op <- par(mar=c(2.9,3.4,0.1,0.1))
+    op <- par(mar=c(2.9,3.6,0.1,0.1))
   } else {
     op <- par(mar=c(2.9,4.8,0.1,0.1))
   }
@@ -299,11 +316,23 @@ custom_jnplot <- function(jn_root1, jn_root2, jnvals) {
 
 ################# test assumptions first ####################
 #get data from spss file
-if (file.exists(in_file)) {
+if (file.exists(in_file1)) {
   if (use_covars > 0) {
-    master <- read.csv(in_file, sep=",")[ ,c(iv_var, mod_var, dv_var, cov1, cov2, cov3)]
+    if (in_file2 == "") {
+      master <- read.csv(in_file1, sep=",")[ ,c(iv_var, mod_var, dv_var, cov1, cov2, cov3)]
+    } else {
+      master1 <- read.csv(in_file1, sep=",")[ ,c(iv_var, mod_var, dv_var, cov1, cov2, cov3)]
+      master2 <- read.csv(in_file2, sep=",")[ ,c(iv_var, mod_var, dv_var, cov1, cov2, cov3)]
+      master <- rbind(master1,master2)
+    }
   } else {
-    master <- read.csv(in_file, sep=",")[ ,c(iv_var, mod_var, dv_var)]
+    if (in_file2 == "") {
+      master <- read.csv(in_file1, sep=",")[ ,c(iv_var, mod_var, dv_var)]
+    } else {
+      master1 <- read.csv(in_file1, sep=",")[ ,c(iv_var, mod_var, dv_var)]
+      master2 <- read.csv(in_file2, sep=",")[ ,c(iv_var, mod_var, dv_var)]
+      master <- rbind(master1,master2)
+    }
   }
   
   #define file name from column names for later saving of files
@@ -323,7 +352,7 @@ if (file.exists(in_file)) {
     dv_dicot <- 0
   }
   
-  #test for dicothimous dv (y)
+  #test for dicothimous iv (y)
   if (length(unique(master$IV)) == 2) {
     iv_dicot <- 1 
   } else {
@@ -332,7 +361,11 @@ if (file.exists(in_file)) {
   
   ##################### outlier analysis #####################
   # run regression for outlier check using master data (exclude covars here)
-  outlier_master <- as.data.frame(cbind(master$IV, master$DV, master$MOD))
+  if (iv_dicot < 1 && dv_dicot < 1) {
+    outlier_master <- as.data.frame(cbind(master$IV, master$DV, master$MOD))
+  } else {
+    outlier_master <- as.data.frame(cbind(master$DV, master$MOD))
+  }
   lm_out <- lm(DV ~ IV*MOD, na.action=na.exclude, data=master)
   
   # read https://www3.nd.edu/~rwilliam/stats2/l24.pdf
@@ -370,58 +403,63 @@ if (file.exists(in_file)) {
   }
   
   # means center predictors
-  if (meancent > 0) {
+  if (meancent > 0 && iv_dicot < 1) {
     noout$IV <- as.numeric(scale(noout$IV, scale=F, center=T))
+    noout$MOD <- as.numeric(scale(noout$MOD, scale=F, center=T))
+  } else if (meancent > 0 && iv_dicot > 0){
     noout$MOD <- as.numeric(scale(noout$MOD, scale=F, center=T))
   }
   
-  # run regression on new outlier-free dataset (noout) -- factor for binary variables
+  # run regression on new outlier-free dataset (noout) - factor for binary variables
   if (use_covars > 0) {
     model <- lm(DV ~ IV*MOD+Z1+Z2+Z3, na.action=na.exclude, data=noout)
   } else {
     model <- lm(DV ~ IV*MOD, na.action=na.exclude, data=noout)
   }
   
-  pdf(paste(paste(filename,sep="_"), "pdf", sep="."), paper="a4", 
-      title="Assumption checks", family="serif")
-  par(mfrow = c(2,2))
-  
-  # create standardized residuals plot
-  unstandPred <- predict(model)
-  unstandResid <- resid(model)
-  standPred <- (unstandPred-mean(unstandPred))/sd(unstandPred)
-  standResid <- (unstandResid-mean(unstandResid))/sd(unstandResid)
-  
-  # create residuals histogram
-  tmp <- density(standResid)
-  hist(standResid, freq=FALSE, 
-       main="Histogram of Standardized Residuals",
-       xlab="Regression Standardized Residual", ylim=c(0, max(tmp$y)+0.1), 
-       xlim=c(min(tmp$x),min(tmp$x)*-1))
-  curve(dnorm, add=TRUE, col="blue", lty=1, lwd=1)
-  
-  # get probability distribution for residuals and plot PP
-  probDist <- pnorm(standResid)
-  plot(ppoints(length(standResid)), sort(probDist), 
-       main = "Normal P-P Plot of Standardized Residual",
-       sub = dv_var_desc,
-       xlab = "Observed Probability", 
-       ylab = "Expected Probability")
-  # add diagonal line
-  abline(0,1)
-  
-  # visual inspection for heteroscedasticity
-  plot(standResid, standPred,
-       main = "Standardized Residuals Plot", 
-       xlab = "Standardized Residual values", 
-       ylab = "Standardized Predictor values")
-  abline(0,0)
-  abline(v=0)
-  dev.off()
-  
-  # do Breusch-Pagan test for heteroscedasticity
-  # if significant you have heteroscedasticity
-  bp <- bptest(model)
+  #only do if IV is not binary
+  if (iv_dicot < 1) {
+    pdf(paste(paste(filename,sep="_"), "pdf", sep="."), paper="a4", 
+        title="Assumption checks", family="serif")
+    par(mfrow = c(2,2))
+    
+    # create standardized residuals plot
+    unstandPred <- predict(model)
+    unstandResid <- resid(model)
+    standPred <- (unstandPred-mean(unstandPred))/sd(unstandPred)
+    standResid <- (unstandResid-mean(unstandResid))/sd(unstandResid)
+    
+    # create residuals histogral
+    tmp <- density(standResid)
+    hist(standResid, freq=FALSE, 
+         main="Histogram of Standardized Residuals",
+         xlab="Regression Standardized Residual", ylim=c(0, max(tmp$y)+0.1), 
+         xlim=c(min(tmp$x),min(tmp$x)*-1))
+    curve(dnorm, add=TRUE, col="blue", lty=1, lwd=1)
+    
+    # get probability distribution for residuals and plot PP
+    probDist <- pnorm(standResid)
+    plot(ppoints(length(standResid)), sort(probDist), 
+         main = "Normal P-P Plot of Standardized Residual",
+         sub = dv_var_desc,
+         xlab = "Observed Probability", 
+         ylab = "Expected Probability")
+    # add diagonal line
+    abline(0,1)
+    
+    # visual inspection for heteroscedasticity
+    plot(standResid, standPred,
+         main = "Standardized Residuals Plot", 
+         xlab = "Standardized Residual values", 
+         ylab = "Standardized Predictor values")
+    abline(0,0)
+    abline(v=0)
+    dev.off()
+    
+    # do Breusch-Pagan test for heteroscedasticity
+    # if significant you have heteroscedasticity
+    bp <- bptest(model)
+  }
   
   ########### Graphical moderation data #############
   
@@ -535,11 +573,11 @@ if (file.exists(in_file)) {
   
   coeff_cov_adj <- (plotmat1 %*% betamat)
   plotdata <- cbind(num_dec(plotmat1[,3]), num_dec(plotmat1[,2]), num_dec(coeff_cov_adj))
-  colnames(plotdata) <- c("iv_sd","mod_sd","dv")
+  colnames(plotdata) <- c("iv","mod","dv")
   if (iv_dicot < 1) {
     rownames(plotdata) <- c("-1SD","-1SD","-1SD","Mean","Mean","Mean","+1SD","+1SD","+1SD")
   } else {
-    rownames(plotdata) <- c("-1SD","+1SD","-1SD","+1SD","-1SD","+1SD")
+    rownames(plotdata) <- c("-1SD","-1SD","Mean","Mean","+1SD","+1SD")
   }
   
   ############### Calculate simples slopes ###################
@@ -705,15 +743,17 @@ if (file.exists(in_file)) {
   #1981 article "A Note on Studentizing a Test for Heteroscedasticity"
   #If the test is significant, then data is heteroscedastic, which is bad!
   #Read more here https://analysights.wordpress.com/tag/goldfeld-quandt-test/
-  if (bp$p.value < 0.1) {
-    cat("(-) Data shows hereroskedasticity, p =",add_stars(num_dec(bp$p.value)))
-  } else {
-    cat("(+) No hereroskedasticity, p =",num_apa(bp$p.value))
-  }
-  
-  if (length(ku_var) | length(sk_var)>0) {
-    #Trochim & Donnelly, 2006; Field, 2000 & 2009; Gravetter & Wallnau, 2014
-    cat("\n\n* Skew and Kurtosis values +/-2 are considered acceptable.")
+  if (iv_dicot < 1) {
+    if (bp$p.value < 0.1) {
+      cat("(-) Data shows hereroskedasticity, p =",add_stars(num_dec(bp$p.value)))
+    } else {
+      cat("(+) No hereroskedasticity, p =",num_apa(bp$p.value))
+    }
+    
+    if (length(ku_var) | length(sk_var)>0) {
+      #Trochim & Donnelly, 2006; Field, 2000 & 2009; Gravetter & Wallnau, 2014
+      cat("\n\n* Skew and Kurtosis values +/-2 are considered acceptable.")
+    }
   }
   
   #print test of overall model
@@ -801,7 +841,7 @@ if (file.exists(in_file)) {
   cat("\n* Estimates are based on setting covariates to their sample means.")
   
   ################ Johnson-Neyman Technique #################
-  if (jntech > 0) {
+  if (jntech > 0 && iv_dicot < 1) {
     
     if (as.numeric(int_pval) <= 0.1) { #only do if int is sig.
       jn_results = matrix()
@@ -940,7 +980,6 @@ if (file.exists(in_file)) {
   sink() #return to output to terminal
   
   ################ plot moderation function #################
-  
   
   #save moderation plot
   img_height <- (img_dim-(img_dim*0.265))
