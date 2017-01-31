@@ -5,12 +5,12 @@ setwd("C:/path/to/working/directory")
 in_file1 <- "your_data.csv" #name of file to import
 in_file2 <- "some_other_data.csv" #leave empty if not needed, otherwise datasets are appended
 
-meancent <- 1 #set to 0 to disable mean centering of predictors (if IV binary, only MOD is mean centered)
+meancent <- 1 #set to 0 to disable mean centering of predictors
 del_outs <- 1 #set to 0 to disable removal of outliers (only works if IV is continious)
 heteros <- 1  #set to 0 to disable heterscedasticity-consistent SEs
-jntech <- 1 #set to 0 to disable johnson-neyman table
+jntech <- 1 #set to 0 to disable Johnson-Neyman table
 img_type <- "png" #type of moderation image to create (svg, emf or png)
-img_alias <- "cairo" #create antialiased png with Cairo, or none
+img_alias <- "cairo" #create anti-aliased png with Cairo, or none
 img_dim <- 10 #height and width of png
 img_fontsize <- 24 #size of font for moderation plot (comes out much smaller)
 use_covars <- 1 #set to 0 to disable use of covariates in model
@@ -33,7 +33,8 @@ iv_var_desc <- "Description IV"
 mod_var_desc <- "Description Moderator"
 dv_var_desc <- "Descrition DV"
 
-#if IV is binary, change this to groups of IV instead of mod conditions
+#if IV or MOD is dichotomous, change this (first high value, then low value, e.g., 
+#if your group is 0 and 1, then enter name of value 1 first)
 #mod_line_desc <- c("Group A","Group B")
 mod_line_desc <- c("high MOD","mean","low MOD")
 
@@ -68,6 +69,11 @@ num_dec <- function(val) { formatC(round(as.numeric(val), 4), format='f', digits
 num_apa <- function(val) { sub("^(-?)0.|^(-?) 0.", "\\1.", num_dec(val)) }
 no_zero <- function(val) { sub("^(-?)0.|^(-?) 0.", "\\1.", val) }
 print_gap <- 5 #default gap between columns in output tables
+
+#define empty char vars
+mod_leg_txt <- ""
+is_dicot_iv <- ""
+is_dicot_mod <- ""
 
 add_stars <- function(p, cutoffs = c(0.1, 0.05, 0.01, 0.001)) {
   stopifnot(length(cutoffs) == 4)
@@ -109,19 +115,20 @@ modplot<-function(plotdata){
   #bottom,left,top,right
   op <- par(mar=c(3,2.9,0,0), family="serif")
   
-  #adjustments for legend outside of plot
   plot.new() #must be called to draw empty test legend, so we can calculate its length
-  if (iv_dicot < 1) {
-    len_legend <- legend(0, 0, bty='n', mod_line_desc, plot=F, lwd=0, cex=0.9, 
-                         title=paste(mod_var_desc,"(M)"))
-  } else {
-    len_legend <- legend(0, 0, bty='n', mod_line_desc, plot=F, lwd=0, cex=0.9, 
-                         title=mod_var_desc)
+  
+  #signpost dichotomous IV/MOD in legend heading
+  if (iv_dicot > 0 || mod_dicot > 0) {
+    mod_leg_txt <- "(M)"
   }
+  len_legend <- legend(0, 0, bty='n', mod_line_desc, plot=F, lwd=0, cex=0.9, 
+                       title=paste(mod_var_desc,mod_leg_txt))
+  
+  #adjustments for legend outside of plot
   #l$rect, dimensions of rectange, w=width, h=height
   #calculate right margin width in ndc
   w <- grconvertX(len_legend$rect$w, to='ndc') - grconvertX(0, to='ndc')
-  w = w + 0.05
+  w = w + 0.05 #adjust or comment out, if necessary
   #omd values 1 and 3 define in percentages of the device region
   #the starting points of the x and y axes, while values 
   #2 and 4 define the end points (left and right), 1 = 100%
@@ -132,48 +139,54 @@ modplot<-function(plotdata){
   numplot_data3 <- as.numeric(plotdata[,3])
   plottest <- cbind(numplot_data3)
   
-  if (iv_dicot < 1) {
+  if (iv_dicot > 0) { #Dichotomous IV
+    lowline <- c(plottest[1],plottest[3],plottest[5])
+    hiline <- c(plottest[2],plottest[4],plottest[6])
+    lty_legend <- c(1,2)
+  } else if (mod_dicot > 0) { #Dichotomous MOD
+    lowline <- plottest[1:3,]
+    hiline <- plottest[4:6,]
+    lty_legend <- c(1,2)
+  } else { #continious vars
     lowline <- plottest[1:3,]
     medline <- plottest[4:6,]
     hiline <- plottest[7:9,]
     lty_legend <- c(1,2,3)
-  } else {
-    lowline <- c(plottest[1],plottest[3],plottest[5])
-    hiline <- c(plottest[2],plottest[4],plottest[6])
-    lty_legend <- c(1,2)
   }
   
   #plot an empty plot
   plot(NULL, ylim=c(min(numplot_data3)-0.1,max(numplot_data3)+0.1), 
-       xlim=c(0.9,3.1), type="n", xaxt="n", yaxt="n", ylab="", xlab="")
+       xlim=c(0.9,3.1), type="n", xaxt="n", bty="n", yaxt="n", ylab="", xlab="")
   
   #draw legend outside of box
   op <- par(xpd=TRUE) #allows legend to be outside of plot
+  
+  #draw legend without title, as we dont want a centered title
+  if (iv_dicot > 0) {
+    legend_title = iv_var_desc
+  } else {
+    legend_title = paste(mod_var_desc,mod_leg_txt)
+  }
   legend(par('usr')[2], par('usr')[4], mod_line_desc, lty=lty_legend, lwd=2, cex=0.9,
          title="", inset=c(-0.3,0), bty='n', xpd=NA, seg.len=2.2)
-  #make only the legend title bold, account for binary IV and switch
-  if (iv_dicot < 1) {
-    legend(par('usr')[2], par('usr')[4], "", lwd=0, cex=0.9, 
-           title=paste("  ",mod_var_desc,"(M)"), bty='n', xpd=NA)
-  } else {
-    #iv is binary, so use IV as legend for lines
-    legend(par('usr')[2], par('usr')[4], "", lwd=0, cex=0.9, 
-           title=paste("  ",iv_var_desc), bty='n', xpd=NA)
-  }
+  
+  #legend title
+  legend(par('usr')[2], par('usr')[4], "", lwd=0, cex=0.9,
+         title=paste("  ",legend_title), bty='n', xpd=NA)
   
   #draw horizontal grid lines, axis and moderation lines
   op <- par(xpd=FALSE, mgp=c(1,0.6,0))
   grid(NA, NULL, col = "#999999", lty = "dotted")
   axis(1, at=1:3, labels=c("-1 SD", "Mean", "+1 SD"), tck=-0.025, cex.axis=0.9)
   axis(2, cex.axis=0.9, las=1, tck=-0.025)
-  if (iv_dicot < 1) {
-    mtext(1, text=iv_var_desc, line=2, font=1)
+  if (iv_dicot > 0) {
+    mtext(1, text=paste(mod_var_desc,mod_leg_txt), line=2, font=1)
   } else {
-    mtext(1, text=paste(mod_var_desc," (M)"), line=2, font=1)
+    mtext(1, text=iv_var_desc, line=2, font=1)
   }
   mtext(2, text=dv_var_desc, line=2, font=1)
   lines(lowline, lty="dotted", lwd=2)
-  if (iv_dicot < 1) {
+  if (iv_dicot < 1 && mod_dicot < 1) {
     lines(medline, lty="longdash", lwd=2)
   }
   lines(hiline, lty="solid", lwd=2)
@@ -185,9 +198,11 @@ modplot<-function(plotdata){
       plot(noout$IV,noout$DV, 
            xlim=c(min(numplot_data1),max(numplot_data1)),
            #ylim=c(min(plotdata[,4])-0.1,max(plotdata[,4])+0.1),
-           xaxt="n", yaxt="n", ylab="", xlab="", col="#555555")
+           xaxt="n", yaxt="n", ylab="", bty="n", xlab="", col="#555555")
     }
   }
+  box(lwd=2, col="white") #remove vertical and horizontal axis lines, but leave ticks
+  box(lwd=1) #now draw a clean box around the plot
   par(op)
 }
 
@@ -259,7 +274,7 @@ custom_jnplot <- function(jn_root1, jn_root2, jnvals) {
   }
   
   if (y_label_len < 66) {
-    #single line (depends on lenght of description)
+    #single line (depends on length of description)
     jn_ylab_desc <- paste("Conditional effect of", tolower(iv_var_desc), "on", 
                           tolower(dv_var_desc), "\n")
   } else {
@@ -270,7 +285,7 @@ custom_jnplot <- function(jn_root1, jn_root2, jnvals) {
   
   #empty plot with axis set up properly
   plot(y ~ x, data=jn_llci_data, ylim=y_range, xlim=x_range, 
-       xlab=paste(mod_var_desc,"(M)"), ylab=jn_ylab_desc, 
+       xlab=paste(mod_var_desc, mod_leg_txt), ylab=jn_ylab_desc, 
        cex.axis=0.9, cex.lab=1.1, las=1, tck=-0.025, type="n")
   
   #sort values to join dots
@@ -315,7 +330,7 @@ custom_jnplot <- function(jn_root1, jn_root2, jnvals) {
 }
 
 ################# test assumptions first ####################
-#get data from spss file
+#get data from csv file
 if (file.exists(in_file1)) {
   if (use_covars > 0) {
     if (in_file2 == "") {
@@ -345,23 +360,30 @@ if (file.exists(in_file1)) {
     names(master) <- c("IV", "MOD", "DV")
   }
   
-  #test for dicothimous dv (y)
+  #test for dichotomous dv (y)
   if (length(unique(master$DV)) == 2) {
     dv_dicot <- 1 
   } else {
     dv_dicot <- 0
   }
   
-  #test for dicothimous iv (y)
+  #test for dichotomous iv (y)
   if (length(unique(master$IV)) == 2) {
     iv_dicot <- 1 
   } else {
     iv_dicot <- 0
   }
   
+  #test for dichotomous moderator (m)
+  if (length(unique(master$MOD)) == 2) {
+    mod_dicot <- 1 
+  } else {
+    mod_dicot <- 0
+  }
+  
   ##################### outlier analysis #####################
   # run regression for outlier check using master data (exclude covars here)
-  if (iv_dicot < 1 && dv_dicot < 1) {
+  if (iv_dicot < 1) {
     outlier_master <- as.data.frame(cbind(master$IV, master$DV, master$MOD))
   } else {
     outlier_master <- as.data.frame(cbind(master$DV, master$MOD))
@@ -402,22 +424,22 @@ if (file.exists(in_file1)) {
     noout <- master
   }
   
-  # means center predictors
+  # means center predictors, if continuous
   if (meancent > 0 && iv_dicot < 1) {
     noout$IV <- as.numeric(scale(noout$IV, scale=F, center=T))
-    noout$MOD <- as.numeric(scale(noout$MOD, scale=F, center=T))
-  } else if (meancent > 0 && iv_dicot > 0){
+  } 
+  if (meancent > 0 && mod_dicot < 1) { #mod cont.
     noout$MOD <- as.numeric(scale(noout$MOD, scale=F, center=T))
   }
   
-  # run regression on new outlier-free dataset (noout) - factor for binary variables
+  # run regression on new outlier-free dataset (noout)
   if (use_covars > 0) {
     model <- lm(DV ~ IV*MOD+Z1+Z2+Z3, na.action=na.exclude, data=noout)
   } else {
     model <- lm(DV ~ IV*MOD, na.action=na.exclude, data=noout)
   }
   
-  #only do if IV is not binary
+  #only do if IV is continuous
   if (iv_dicot < 1) {
     pdf(paste(paste(filename,sep="_"), "pdf", sep="."), paper="a4", 
         title="Assumption checks", family="serif")
@@ -429,7 +451,7 @@ if (file.exists(in_file1)) {
     standPred <- (unstandPred-mean(unstandPred))/sd(unstandPred)
     standResid <- (unstandResid-mean(unstandResid))/sd(unstandResid)
     
-    # create residuals histogral
+    # create residuals histogram
     tmp <- density(standResid)
     hist(standResid, freq=FALSE, 
          main="Histogram of Standardized Residuals",
@@ -525,13 +547,13 @@ if (file.exists(in_file1)) {
   hihi <- beta_iv * (mean_iv+sd_iv) + beta_mod * (mean_mod+sd_mod) + 
     beta_int * ((mean_iv+sd_iv) * (mean_mod+sd_mod)) + intercept
   
-  #build 2 matrices and then multiply them, to adjust the plot values for covars
-  #to get estimates based on setting covariates to their sample means
+  #build 2 matrices (beta and plot) and then multiply them, to adjust the plot 
+  #values for covars to get estimates based on setting covariates to their sample means
   #see also http://www.calcul.com/show/calculator/matrix-multiplication
-  if (iv_dicot < 1) {
-    plotmat <- cbind(lowlow, lowmed, lowhi, medlow, medmed, medhi, hilow, himed, hihi)
-  } else {
+  if (iv_dicot > 0 || mod_dicot > 0) {
     plotmat <- cbind(lowlow, lowmed, medlow, medmed, hilow, himed)
+  } else {
+    plotmat <- cbind(lowlow, lowmed, lowhi, medlow, medmed, medhi, hilow, himed, hihi)
   }
   
   if (use_covars > 0) {
@@ -540,20 +562,28 @@ if (file.exists(in_file1)) {
     betamat <- matrix(rbind(intercept, beta_mod, beta_iv, beta_int), ncol = 1)
   }
   
-  #create and fill matrix for plot, +/1 1SD of moderator  (low/mean/high)
+  #create and fill matrix for plot, +/1 1SD of moderator (low/mean/high)
   if (meancent > 0) {
-    modvals <- c(sd(noout$MOD)*-1,0,sd(noout$MOD))
     if (iv_dicot < 1) {
       ivvals <- c(sd(noout$IV)*-1,0,sd(noout$IV))
     } else {
       ivvals <- c(min(noout$IV),max(noout$IV))
     }
+    if (mod_dicot < 1) {
+      modvals <- c(sd(noout$MOD)*-1,0,sd(noout$MOD))
+    } else {
+      modvals <- c(min(noout$MOD),max(noout$MOD))
+    }
   } else {
-    modvals <- c((mean(noout$MOD)-sd(noout$MOD)),mean(noout$MOD),(mean(noout$MOD)+sd(noout$MOD)))
     if (iv_dicot < 1) {
       ivvals <- c((mean(noout$IV)-sd(noout$IV)),mean(noout$IV),(mean(noout$IV)+sd(noout$IV)))
     } else {
       ivvals <- c(min(noout$IV),max(noout$IV))
+    }
+    if (mod_dicot < 1) {
+      modvals <- c((mean(noout$MOD)-sd(noout$MOD)),mean(noout$MOD),(mean(noout$MOD)+sd(noout$MOD)))
+    } else {
+      modvals <- c(min(noout$MOD),max(noout$MOD))
     }
   }
   
@@ -573,12 +603,14 @@ if (file.exists(in_file1)) {
   
   coeff_cov_adj <- (plotmat1 %*% betamat)
   plotdata <- cbind(num_dec(plotmat1[,3]), num_dec(plotmat1[,2]), num_dec(coeff_cov_adj))
-  colnames(plotdata) <- c("iv","mod","dv")
-  if (iv_dicot < 1) {
-    rownames(plotdata) <- c("-1SD","-1SD","-1SD","Mean","Mean","Mean","+1SD","+1SD","+1SD")
-  } else {
-    rownames(plotdata) <- c("-1SD","-1SD","Mean","Mean","+1SD","+1SD")
-  }
+  #colnames(plotdata) <- c("iv","mod","dv")
+  #rownames(plotdata) <- ""
+  
+  #if (iv_dicot > 0 || mod_dicot > 0) {
+  #rownames(plotdata) <- c("-1SD","-1SD","Mean","Mean","+1SD","+1SD")
+  #} else {
+  #rownames(plotdata) <- c("-1SD","-1SD","-1SD","Mean","Mean","Mean","+1SD","+1SD","+1SD")
+  #}
   
   ############### Calculate simples slopes ###################
   #Effect of Low SS = beta IV + beta IV:MOD * -1SD
@@ -587,7 +619,7 @@ if (file.exists(in_file1)) {
   hiss <- (beta_iv + beta_int * (sd_mod+mean_mod))
   ssmat <- rbind(lowss,medss,hiss)
   
-  #calculate standard error for simple slopes (this is were hell begins and never ends!!)
+  #calculate standard error for simple slopes (this is where hell begins and never ends!!)
   if (use_covars > 0) {
     xy <- cbind(1, noout$MOD, noout$IV, (noout$MOD*noout$IV), noout$Z1, noout$Z2, noout$Z3)
   } else {
@@ -612,7 +644,8 @@ if (file.exists(in_file1)) {
     }
   } else {
     for (i in 1:k3) {
-      xy[,i] <- sqrt(mse)*xy[,i, drop=F];
+      xy[,i] <- s
+      qrt(mse)*xy[,i, drop=F]
     }
   }
   
@@ -647,7 +680,11 @@ if (file.exists(in_file1)) {
   
   ss_output <- as.data.frame(ss_output)
   colnames(ss_output) <- c(mod_var, "Effect", "se", "t", "p    ", "LLCI", "ULCI")
-  rownames(ss_output) <- c("-1SD","Mean","+1SD")
+  if (mod_dicot < 1) {
+    rownames(ss_output) <- c("-1SD","Mean","+1SD")
+  } else {
+    rownames(ss_output) <- rev(mod_line_desc)
+  }
   
   #t-test for simple slopes
   #for comparision of ss function which does not adjust for hc3
@@ -688,9 +725,11 @@ if (file.exists(in_file1)) {
   
   star_head("Model 1 - Moderation",0," ")
   star_head("Variables",2)
+  if (iv_dicot > 0) { is_dicot_iv <- "** Dichotomous **" } 
+  if (mod_dicot > 0) { is_dicot_mod <- "** Dichotomous **" } 
   cat("Dependent variable   (DV)  = ", dv_var_desc, dv_var_var, "\n")
-  cat("Independent variable (IV)  = ", iv_var_desc, iv_var_var,"\n")
-  cat("Moderating variable  (MOD) = ", mod_var_desc, mod_var_var)
+  cat("Independent variable (IV)  = ", iv_var_desc, iv_var_var, is_dicot_iv, "\n")
+  cat("Moderating variable  (MOD) = ", mod_var_desc, mod_var_var, is_dicot_mod)
   if (use_covars > 0) {
     cat("\n", "Control variable 1   (Z1)  =  ", cov1_desc, cov1_var, "\n", sep="")
     cat("Control variable 2   (Z2)  = ", cov2_desc, cov2_var, "\n")
@@ -712,9 +751,9 @@ if (file.exists(in_file1)) {
   
   #check that after outlier removal skew and kurtosis are acceptable
   #A normal distribution has a skewness of 0. Skew to the left, e.g. when the 
-  #hump is on the RIGHT side, has a negative negative value.
+  #hump is on the RIGHT side, has a negative value.
   #Kurtosis is a measure of the heaviness of the tails of a distribution. 
-  #A normal distribution has kurtosis 0. Extremely nonnormal distributions 
+  #A normal distribution has kurtosis 0. Extremely non-normal distributions 
   #may have high positive or negative kurtosis values, while nearly normal 
   #distributions will have kurtosis values close to 0. 
   desc_noout <- describe(noout)
@@ -735,8 +774,8 @@ if (file.exists(in_file1)) {
   }
   
   #When the variance of errors differs, at different values of the IV,
-  #heteroscedasticitz is inidicated. If extreme it can lead to serious
-  #distortion of findings, becasue posibility of Type I error incerases.
+  #heteroscedasticity is indicated. If extreme, it can lead to serious
+  #distortion of findings, because possibility of Type I errors increases.
   #The scatterplot should be examined for heteroskedasticity, however
   #this little test will also help to determine if this is the case.
   #The studentized Breusch-Pagan test was proposed by R. Koenker in his 
@@ -833,15 +872,24 @@ if (file.exists(in_file1)) {
   print(ss_output, right=T, quote=F, print.gap=(print_gap-1))
   
   cat("\nEffect is not Beta, but B, as it is unstandardized here.\n")
-  cat("Values for quantitative moderators are the mean and plus/minus one SD from mean.") 
+  cat("Values for quantitative moderators are the mean and plus/minus one SD from mean.\n")
+  cat("Values for dichotomous moderators are the two values of the moderator.")
   
   star_head("Plotting data",2)
-  cat("Data for visualising conditional effext of X on Y\n\n")
-  print.table(plotdata, right=T, quote=F, print.gap=print_gap)
+  cat("Data for visualising conditional effect of X on Y\n")
+  cat("Paste text below into a SPSS syntax window and execute to produce plot.\n\n")
+  cat("DATA LIST FREE/",iv_var, " ", mod_var, " ", dv_var,".\nBEGIN DATA.\n\n",sep="")
+  write.table(format(plotdata, justify="right"), quote=F, row.names=F, col.names=F)
+  #be clever, switch if IV dichotomous
+  if (iv_dicot > 0) {
+    cat("\nEND DATA.\nGRAPH/SCATTERPLOT=",mod_var," WITH ",dv_var," BY ",iv_var,".\n",sep="")
+  } else {
+    cat("\nEND DATA.\nGRAPH/SCATTERPLOT=",iv_var," WITH ",dv_var," BY ",mod_var,".\n",sep="")
+  }
   cat("\n* Estimates are based on setting covariates to their sample means.")
   
   ################ Johnson-Neyman Technique #################
-  if (jntech > 0 && iv_dicot < 1) {
+  if (jntech > 0 && mod_dicot < 1) {
     
     if (as.numeric(int_pval) <= 0.1) { #only do if int is sig.
       jn_results = matrix()
@@ -928,7 +976,7 @@ if (file.exists(in_file1)) {
         }
         
         colnames(root_results) <- c("Value","% below","% above")
-        print(root_results, quote=F, right=T, print.gap=print_gap);
+        print(root_results, quote=F, right=T, print.gap=print_gap)
         
         cat("\nConditional effect of X on Y at values of the moderator (M)\n")
         jn_results <- cbind(num_dec(jnvals[,1]), #mod
@@ -964,6 +1012,8 @@ if (file.exists(in_file1)) {
       star_head("Johnson-Neyman Technique",2)
       cat("There are no statistical significance transition points within the observed\nrange of the moderator.\n")
     }
+  } else {
+    cat("\n")
   }
   
   ################ notes ###############
@@ -975,6 +1025,9 @@ if (file.exists(in_file1)) {
   }
   if(heteros > 0) {
     cat("All standard errors for continuous outcome models are based on the HC3 estimator.\n")
+  }
+  if (mod_dicot > 0) {
+    cat("The Johnson-Neyman method cannot be used with a dichotomous moderator.\n")
   }
   
   sink() #return to output to terminal
@@ -988,7 +1041,7 @@ if (file.exists(in_file1)) {
   dev.off()
   
 } else {
-  stop("Cant find the data file!")
+  stop("Can not find the data file!")
 }
 #reset parameters
 options(scipen=0)
